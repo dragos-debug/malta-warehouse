@@ -197,8 +197,8 @@
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 /* ============ CONFIG: change these two values ============ */
-const CLIENT_ID = '279152094446-a6g6bi7k4c81go3gp87r0q7qb54kibc8.apps.googleusercontent.com';
-const API_URL   = 'https://script.google.com/macros/s/AKfycbzQKq-mnfYrkOCCr68L4EvwrRO58FDe2h7FDOPi-BHHwDF9Ii8R8dWy4FRBMPyrEa4v/exec';       // ends with /exec
+const CLIENT_ID = 'PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com';
+const API_URL   = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL';       // ends with /exec
 /* ========================================================== */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -207,7 +207,8 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 let idToken = null, tokenExp = 0, email = '';
 let mode = null;               // 'out' | 'in'
 let scanner = null, scanning = false;
-let busy = false, lastCode = '', lastTime = 0;
+const inflight = new Set();    // SKUs currently being sent, so scans of different items don't wait on each other
+let lastCode = '', lastTime = 0;
 let tokenWaiter = null;
 
 /* ---------- views ---------- */
@@ -235,6 +236,8 @@ function onCredential(resp) {
   tokenExp = payload.exp * 1000;
   email = (payload.email || '').toLowerCase();
   $$('[data-who]').forEach(el => el.textContent = email);
+  // Warm-up: wakes the backend and primes its login cache so the first real scan is fast.
+  api({ action: 'ping', idToken }).catch(() => {});
   if (tokenWaiter) { tokenWaiter(idToken); tokenWaiter = null; return; }
   if (mode) { show('scan'); startCamera(); } else { show('choose'); }
 }
@@ -356,10 +359,10 @@ async function api(payload) {
 
 async function handleCode(raw, force = false) {
   const sku = String(raw || '').trim();
-  if (!sku || busy || !mode) return;
+  if (!sku || inflight.has(sku) || !mode) return;
   const now = Date.now();
   if (!force && sku === lastCode && now - lastTime < 3000) return; // ignore repeat reads of the same code
-  lastCode = sku; lastTime = now; busy = true;
+  lastCode = sku; lastTime = now; inflight.add(sku);
 
   setBanner('', 'Checking ' + sku + '…');
   try {
@@ -386,9 +389,9 @@ async function handleCode(raw, force = false) {
   } catch (e) {
     if (e.code === 'AUTH') { showLogin(e.message); return; }
     beep(false);
-    setBanner('err', 'Could not reach the server', 'Check your connection and scan again.');
+    setBanner('err', 'Could not reach the server', String((e && e.message) || e));
   } finally {
-    busy = false;
+    inflight.delete(sku);
   }
 }
 
