@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1b2230">
+<title>Sample drawers</title>
+<style>
+  :root {
+    --ink: #1b2230;
+    --ink-soft: #5b6475;
+    --paper: #f4f6f8;
+    --card: #ffffff;
+    --line: #dde2e8;
+    --out: #d9822b;      /* taking out */
+    --out-bg: #fdf0e1;
+    --in: #1f8a70;       /* putting back */
+    --in-bg: #e0f3ed;
+    --warn-bg: #fff4cc;
+    --warn: #8a6a00;
+    --err-bg: #fde4e4;
+    --err: #b3261e;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #eef1f5;
+      --ink-soft: #9aa4b5;
+      --paper: #12161e;
+      --card: #1b2230;
+      --line: #2c3547;
+      --out-bg: #3a2a16;
+      --in-bg: #143429;
+      --warn-bg: #3b3313;
+      --warn: #f0d36b;
+      --err-bg: #3d1a1a;
+      --err: #ff9d95;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 520px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  p.lead { margin: 0 0 20px; color: var(--ink-soft); line-height: 1.45; }
+  .hidden { display: none !important; }
+
+  header.bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 0 0 12px;
+  }
+  .who { font-size: .85rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .link { background: none; border: 0; padding: 6px 0; color: var(--ink-soft); text-decoration: underline; }
+
+  /* login */
+  #login { padding-top: 12vh; text-align: left; }
+  #g_btn { margin-top: 8px; min-height: 44px; }
+  #login .msg { margin-top: 16px; color: var(--err); }
+
+  /* choose */
+  .choice {
+    display: block; width: 100%; text-align: left;
+    border: 2px solid transparent; border-radius: var(--radius);
+    padding: 22px 20px; margin-bottom: 14px;
+  }
+  .choice strong { display: block; font-size: 1.25rem; margin-bottom: 4px; }
+  .choice span { color: var(--ink-soft); }
+  .choice.out { background: var(--out-bg); border-color: var(--out); }
+  .choice.in  { background: var(--in-bg);  border-color: var(--in); }
+
+  /* scan */
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--line); padding: 4px; border-radius: 12px; margin-bottom: 12px; }
+  .seg button { border: 0; border-radius: 9px; padding: 12px 8px; background: transparent; font-weight: 600; color: var(--ink-soft); }
+  .seg button[aria-pressed="true"].out { background: var(--out); color: #fff; }
+  .seg button[aria-pressed="true"].in  { background: var(--in);  color: #fff; }
+
+  .viewfinder {
+    position: relative; border-radius: var(--radius); overflow: hidden;
+    background: #000; aspect-ratio: 1 / 1; border: 3px solid var(--line);
+  }
+  body[data-mode="out"] .viewfinder { border-color: var(--out); }
+  body[data-mode="in"]  .viewfinder { border-color: var(--in); }
+  #reader { width: 100%; height: 100%; }
+  #reader video { object-fit: cover; }
+  .cam-fallback {
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
+    color: #fff; background: #000;
+  }
+  .cam-fallback button { background: #fff; color: #000; border: 0; border-radius: 10px; padding: 12px 18px; font-weight: 600; }
+
+  #banner {
+    margin: 12px 0; padding: 14px 16px; border-radius: var(--radius);
+    background: var(--card); border: 1px solid var(--line); line-height: 1.35; min-height: 56px;
+  }
+  #banner b { display: block; font-size: 1.05rem; }
+  #banner.ok   { background: var(--in-bg);  border-color: var(--in); }
+  #banner.warn { background: var(--warn-bg); border-color: var(--warn); }
+  #banner.err  { background: var(--err-bg);  border-color: var(--err); }
+  #banner .actions { display: flex; gap: 8px; margin-top: 10px; }
+  #banner .actions button { border-radius: 10px; padding: 10px 14px; border: 1px solid var(--ink-soft); background: var(--card); font-weight: 600; }
+  #banner .actions button.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  form.manual { display: flex; gap: 8px; margin-bottom: 18px; }
+  form.manual input {
+    flex: 1; min-width: 0; font: inherit; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  form.manual button { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 0 16px; font-weight: 600; }
+
+  h2 { font-size: .95rem; margin: 0 0 8px; color: var(--ink-soft); font-weight: 600; }
+  ul#history { list-style: none; margin: 0; padding: 0; }
+  ul#history li {
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    padding: 10px 0; border-bottom: 1px solid var(--line);
+  }
+  ul#history .sku { font-weight: 600; word-break: break-all; }
+  ul#history .what { color: var(--ink-soft); font-size: .85rem; text-align: right; flex-shrink: 0; }
+  ul#history li.bad .what { color: var(--err); }
+  .empty { color: var(--ink-soft); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body data-mode="">
+<main>
+
+  <!-- 1. Sign in -->
+  <section id="login">
+    <h1>Sample drawers</h1>
+    <p class="lead">Sign in with your company Google account to scan samples in and out.</p>
+    <div id="g_btn"></div>
+    <p class="msg hidden" id="login_msg" role="alert"></p>
+  </section>
+
+  <!-- 2. Choose -->
+  <section id="choose" class="hidden">
+    <header class="bar">
+      <div class="who" data-who></div>
+      <button class="link" data-signout type="button">Sign out</button>
+    </header>
+    <h1>What are you doing?</h1>
+    <p class="lead">You can switch at any time while scanning.</p>
+    <button class="choice out" type="button" data-pick="out">
+      <strong>Taking samples out</strong>
+      <span>Scanned items are assigned to you.</span>
+    </button>
+    <button class="choice in" type="button" data-pick="in">
+      <strong>Putting samples back</strong>
+      <span>Scanned items are marked as in the drawer.</span>
+    </button>
+  </section>
+
+  <!-- 3. Scan -->
+  <section id="scan" class="hidden">
+    <header class="bar">
+      <div class="who" data-who></div>
+      <button class="link" data-signout type="button">Sign out</button>
+    </header>
+
+    <div class="seg" role="group" aria-label="Action">
+      <button type="button" class="out" data-pick="out" aria-pressed="false">Taking out</button>
+      <button type="button" class="in" data-pick="in" aria-pressed="false">Putting back</button>
+    </div>
+
+    <div class="viewfinder">
+      <div id="reader"></div>
+      <div class="cam-fallback hidden" id="cam_fallback">
+        <div id="cam_msg">The camera is off.</div>
+        <button type="button" id="cam_start">Start camera</button>
+      </div>
+    </div>
+
+    <div id="banner" role="status" aria-live="polite">Point the camera at a sample QR code.</div>
+
+    <form class="manual" id="manual" autocomplete="off">
+      <input id="manual_sku" type="text" placeholder="QR won't scan? Type the SKU" autocapitalize="off" spellcheck="false" aria-label="SKU">
+      <button type="submit">Apply</button>
+    </form>
+
+    <h2>This session</h2>
+    <ul id="history"><li class="empty">Nothing scanned yet.</li></ul>
+  </section>
+
+</main>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+/* ============ CONFIG: change these two values ============ */
+const CLIENT_ID = '279152094446-a6g6bi7k4c81go3gp87r0q7qb54kibc8.apps.googleusercontent.com';
+const API_URL   = 'https://script.google.com/a/macros/bodymod.com/s/AKfycbzQKq-mnfYrkOCCr68L4EvwrRO58FDe2h7FDOPi-BHHwDF9Ii8R8dWy4FRBMPyrEa4v/exec';       // ends with /exec
+/* ========================================================== */
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+let idToken = null, tokenExp = 0, email = '';
+let mode = null;               // 'out' | 'in'
+let scanner = null, scanning = false;
+let busy = false, lastCode = '', lastTime = 0;
+let tokenWaiter = null;
+
+/* ---------- views ---------- */
+function show(view) {
+  ['login', 'choose', 'scan'].forEach(v => $('#' + v).classList.toggle('hidden', v !== view));
+}
+function showLogin(message) {
+  stopCamera();
+  idToken = null;
+  show('login');
+  const m = $('#login_msg');
+  m.textContent = message || '';
+  m.classList.toggle('hidden', !message);
+}
+
+/* ---------- Google sign-in ---------- */
+function decodeJwt(t) {
+  const p = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+  return JSON.parse(decodeURIComponent(atob(p).split('').map(c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')));
+}
+
+function onCredential(resp) {
+  idToken = resp.credential;
+  const payload = decodeJwt(idToken);
+  tokenExp = payload.exp * 1000;
+  email = (payload.email || '').toLowerCase();
+  $$('[data-who]').forEach(el => el.textContent = email);
+  if (tokenWaiter) { tokenWaiter(idToken); tokenWaiter = null; return; }
+  if (mode) { show('scan'); startCamera(); } else { show('choose'); }
+}
+
+function initGoogle() {
+  if (!window.google || !google.accounts) { return setTimeout(initGoogle, 200); }
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID,
+    callback: onCredential,
+    auto_select: true,
+    cancel_on_tap_outside: false
+  });
+  google.accounts.id.renderButton($('#g_btn'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill' });
+  google.accounts.id.prompt();
+}
+
+// Tokens last about an hour; refresh quietly before a scan if needed.
+function ensureToken() {
+  if (idToken && tokenExp - Date.now() > 60000) return Promise.resolve(idToken);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { tokenWaiter = null; reject(Object.assign(new Error('Please sign in again'), { code: 'AUTH' })); }, 15000);
+    tokenWaiter = t => { clearTimeout(timer); resolve(t); };
+    google.accounts.id.prompt();
+  });
+}
+
+function signOut() {
+  if (window.google && google.accounts) google.accounts.id.disableAutoSelect();
+  mode = null; document.body.dataset.mode = '';
+  showLogin('');
+}
+
+/* ---------- mode ---------- */
+function setMode(m) {
+  mode = m;
+  document.body.dataset.mode = m;
+  $$('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pick === m)));
+  setBanner('', m === 'out' ? 'Taking out: scan each sample you are removing.' : 'Putting back: scan each sample you are returning.');
+  show('scan');
+  startCamera();
+}
+
+/* ---------- camera ---------- */
+async function startCamera() {
+  if (scanning) return;
+  $('#cam_fallback').classList.add('hidden');
+  try {
+    if (!scanner) {
+      scanner = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
+    }
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } },
+      text => handleCode(text),
+      () => {}
+    );
+    scanning = true;
+  } catch (e) {
+    $('#cam_msg').textContent = 'Camera unavailable. Allow camera access for this site, then try again.';
+    $('#cam_fallback').classList.remove('hidden');
+  }
+}
+async function stopCamera() {
+  if (scanner && scanning) { try { await scanner.stop(); } catch (e) {} }
+  scanning = false;
+}
+
+/* ---------- feedback ---------- */
+let audioCtx;
+function beep(ok) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = ok ? 880 : 220; g.gain.value = 0.08;
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + (ok ? 0.12 : 0.3));
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(ok ? 40 : [80, 60, 80]);
+}
+
+function setBanner(kind, title, detail, actions) {
+  const b = $('#banner');
+  b.className = kind;
+  b.innerHTML = '';
+  const t = document.createElement('b'); t.textContent = title; b.appendChild(t);
+  if (detail) { const d = document.createElement('div'); d.textContent = detail; b.appendChild(d); }
+  if (actions) {
+    const a = document.createElement('div'); a.className = 'actions';
+    actions.forEach(x => {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.textContent = x.label; if (x.primary) btn.className = 'primary';
+      btn.onclick = x.onClick; a.appendChild(btn);
+    });
+    b.appendChild(a);
+  }
+}
+
+function addHistory(sku, text, bad) {
+  const ul = $('#history');
+  if (ul.firstElementChild && ul.firstElementChild.classList.contains('empty')) ul.innerHTML = '';
+  const li = document.createElement('li');
+  if (bad) li.className = 'bad';
+  const a = document.createElement('span'); a.className = 'sku'; a.textContent = sku;
+  const w = document.createElement('span'); w.className = 'what'; w.textContent = text;
+  li.append(a, w);
+  ul.prepend(li);
+  while (ul.children.length > 30) ul.lastElementChild.remove();
+}
+
+/* ---------- API ---------- */
+async function api(payload) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids a CORS preflight
+    body: JSON.stringify(payload),
+    redirect: 'follow'
+  });
+  return res.json();
+}
+
+async function handleCode(raw, force = false) {
+  const sku = String(raw || '').trim();
+  if (!sku || busy || !mode) return;
+  const now = Date.now();
+  if (!force && sku === lastCode && now - lastTime < 3000) return; // ignore repeat reads of the same code
+  lastCode = sku; lastTime = now; busy = true;
+
+  setBanner('', 'Checking ' + sku + '…');
+  try {
+    const token = await ensureToken();
+    const r = await api({ action: 'scan', idToken: token, sku, mode, force });
+
+    if (r.code === 'AUTH') { showLogin(r.error); return; }
+
+    if (r.ok) {
+      beep(true);
+      setBanner('ok', sku, r.message);
+      addHistory(sku, r.status === 'noop' ? 'No change' : (mode === 'out' ? 'Taken out' : 'Put back'), false);
+    } else if (r.conflict) {
+      beep(false);
+      setBanner('warn', sku, 'This sample is already with ' + r.holder + '.', [
+        { label: 'Take it anyway', primary: true, onClick: () => handleCode(sku, true) },
+        { label: 'Cancel', onClick: () => setBanner('', 'Cancelled.') }
+      ]);
+    } else {
+      beep(false);
+      setBanner('err', 'Not updated', r.error || 'Unknown error');
+      addHistory(sku, 'Failed', true);
+    }
+  } catch (e) {
+    if (e.code === 'AUTH') { showLogin(e.message); return; }
+    beep(false);
+    setBanner('err', 'Could not reach the server', 'Check your connection and scan again.');
+  } finally {
+    busy = false;
+  }
+}
+
+/* ---------- wiring ---------- */
+$$('[data-pick]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.pick)));
+$$('[data-signout]').forEach(b => b.addEventListener('click', signOut));
+$('#cam_start').addEventListener('click', startCamera);
+$('#manual').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('#manual_sku').value;
+  $('#manual_sku').value = '';
+  handleCode(v, true);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopCamera();
+  else if (mode && idToken && !$('#scan').classList.contains('hidden')) startCamera();
+});
+
+initGoogle();
+</script>
+</body>
+</html>
