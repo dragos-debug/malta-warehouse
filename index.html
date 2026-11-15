@@ -451,16 +451,14 @@ async function handleCode(raw, force = false) {
 
   setBanner('', 'Checking ' + sku + '…');
   try {
-    const t0 = performance.now();
     const token = await ensureToken();
     const r = await api({ action: 'scan', idToken: token, sku, mode, force });
-    const secs = ((performance.now() - t0) / 1000).toFixed(1);
 
     if (r.code === 'AUTH') { showLogin(r.error); return; }
 
     if (r.ok) {
       beep(true);
-      setBanner('ok', sku, r.message + ' (' + secs + 's)');
+      setBanner('ok', sku, r.message);
       addHistory(sku, r.status === 'noop' ? 'No change' : (mode === 'out' ? 'Taken out' : 'Put back'), false);
     } else if (r.conflict) {
       beep(false);
