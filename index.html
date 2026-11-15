@@ -425,14 +425,18 @@ async function api(payload) {
   return res.json();
 }
 
-// QR codes hold a product link such as https://bodymod.com/some-product/?sku=Charm-20-GD-G
-// The SKU is the "sku" part of the link. Plain text (typed or scanned) is used as is.
+// QR codes hold a link such as
+//   https://bodymod.com/catalogsearch/result/?q=Charm-20-GD-G&2600202
+//   https://bodymod.com/some-product/?sku=Charm-20-GD-G
+// The SKU is the "sku" or "q" part of the link. Plain text (typed or scanned) is used as is.
 function extractSku(raw) {
   const text = String(raw || '').trim();
   try {
     const url = new URL(text);
-    for (const [key, value] of url.searchParams) {
-      if (key.toLowerCase() === 'sku' && value.trim()) return value.trim();
+    for (const wanted of ['sku', 'q']) {
+      for (const [key, value] of url.searchParams) {
+        if (key.toLowerCase() === wanted && value.trim()) return value.trim();
+      }
     }
   } catch (e) { /* not a link */ }
   return text;
