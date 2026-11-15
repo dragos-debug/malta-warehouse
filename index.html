@@ -196,9 +196,9 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
-/* ============ CONFIG: change these two values ============ */
+/* ============ CONFIG ============ */
 const CLIENT_ID = '279152094446-a6g6bi7k4c81go3gp87r0q7qb54kibc8.apps.googleusercontent.com';
-const API_URL   = 'https://sample-tracker-279152094446.europe-west8.run.app';       // ends with /exec
+const API_URL   = 'https://sample-tracker-279152094446.europe-west8.run.app';       // Cloud Run service URL
 /* ========================================================== */
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -357,8 +357,21 @@ async function api(payload) {
   return res.json();
 }
 
+// QR codes hold a product link such as https://bodymod.com/some-product/?sku=Charm-20-GD-G
+// The SKU is the "sku" part of the link. Plain text (typed or scanned) is used as is.
+function extractSku(raw) {
+  const text = String(raw || '').trim();
+  try {
+    const url = new URL(text);
+    for (const [key, value] of url.searchParams) {
+      if (key.toLowerCase() === 'sku' && value.trim()) return value.trim();
+    }
+  } catch (e) { /* not a link */ }
+  return text;
+}
+
 async function handleCode(raw, force = false) {
-  const sku = String(raw || '').trim();
+  const sku = extractSku(raw);
   if (!sku || inflight.has(sku) || !mode) return;
   const now = Date.now();
   if (!force && sku === lastCode && now - lastTime < 3000) return; // ignore repeat reads of the same code
@@ -366,14 +379,16 @@ async function handleCode(raw, force = false) {
 
   setBanner('', 'Checking ' + sku + '…');
   try {
+    const t0 = performance.now();
     const token = await ensureToken();
     const r = await api({ action: 'scan', idToken: token, sku, mode, force });
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
 
     if (r.code === 'AUTH') { showLogin(r.error); return; }
 
     if (r.ok) {
       beep(true);
-      setBanner('ok', sku, r.message);
+      setBanner('ok', sku, r.message + ' (' + secs + 's)');
       addHistory(sku, r.status === 'noop' ? 'No change' : (mode === 'out' ? 'Taken out' : 'Put back'), false);
     } else if (r.conflict) {
       beep(false);
