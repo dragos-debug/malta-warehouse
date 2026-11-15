@@ -89,8 +89,7 @@
   }
   body[data-mode="out"] .viewfinder { border-color: var(--out); }
   body[data-mode="in"]  .viewfinder { border-color: var(--in); }
-  #reader { width: 100%; height: 100%; }
-  #reader video { object-fit: cover; }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; }
   .cam-fallback {
     position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
     align-items: center; justify-content: center; text-align: center; padding: 24px;
@@ -173,14 +172,14 @@
     </div>
 
     <div class="viewfinder">
-      <div id="reader"></div>
+      <video id="video" playsinline muted autoplay></video>
       <div class="cam-fallback hidden" id="cam_fallback">
         <div id="cam_msg">The camera is off.</div>
         <button type="button" id="cam_start">Start camera</button>
       </div>
     </div>
 
-    <div id="banner" role="status" aria-live="polite">Point the camera at a sample QR code.</div>
+    <div id="banner" role="status" aria-live="polite">Point the camera at a sample QR code. Let it fill about half of the camera view; if the image looks blurry, move back a little until it sharpens.</div>
 
     <form class="manual" id="manual" autocomplete="off">
       <input id="manual_sku" type="text" placeholder="QR won't scan? Type the SKU" autocapitalize="off" spellcheck="false" aria-label="SKU">
@@ -194,7 +193,7 @@
 </main>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/iife/reader/index.js"></script>
 <script>
 /* ============ CONFIG ============ */
 const CLIENT_ID = '279152094446-a6g6bi7k4c81go3gp87r0q7qb54kibc8.apps.googleusercontent.com';
@@ -206,7 +205,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 let idToken = null, tokenExp = 0, email = '';
 let mode = null;               // 'out' | 'in'
-let scanner = null, scanning = false;
+let stream = null, scanning = false, loopId = 0, frameNo = 0, nativeDetector = null, engineErrorShown = false;
 const inflight = new Set();    // SKUs currently being sent, so scans of different items don't wait on each other
 let lastCode = '', lastTime = 0;
 let tokenWaiter = null;
@@ -281,28 +280,97 @@ function setMode(m) {
 }
 
 /* ---------- camera ---------- */
+// Uses the phone's built-in QR detector when the browser offers one (Android Chrome),
+// otherwise ZXing (the same engine family many native scanner apps use).
+async function pickNativeDetector() {
+  if (nativeDetector !== null) return nativeDetector;
+  nativeDetector = false;
+  try {
+    if ('BarcodeDetector' in window) {
+      const formats = await BarcodeDetector.getSupportedFormats();
+      if (formats.includes('qr_code')) nativeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+    }
+  } catch (e) { nativeDetector = false; }
+  return nativeDetector;
+}
+
+const grab = document.createElement('canvas');
+const gctx = grab.getContext('2d', { willReadFrequently: true });
+
+async function readFrame(video, native) {
+  if (native) {
+    const found = await native.detect(video);
+    return found.length ? found[0].rawValue : '';
+  }
+  // The visible viewfinder is the centre square of the video. Alternate between a native-resolution crop
+  // (best for small, dense codes) and the whole square shrunk down (best for large or close codes).
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const side = Math.min(vw, vh);
+  const alternate = side > 1300;
+  const near = alternate && (frameNo++ % 2 === 0);
+  const crop = near ? Math.min(side, 1800) : side;
+  const out = alternate && !near ? Math.min(side, 1200) : crop;
+  const sx = Math.round((vw - crop) / 2), sy = Math.round((vh - crop) / 2);
+  grab.width = out; grab.height = out;
+  gctx.drawImage(video, sx, sy, crop, crop, 0, 0, out, out);
+  const img = gctx.getImageData(0, 0, out, out);
+  const res = await ZXingWASM.readBarcodes(img, {
+    formats: ['QRCode'], tryHarder: true, tryRotate: false, tryInvert: false, maxNumberOfSymbols: 1
+  });
+  return res.length && res[0].isValid !== false ? res[0].text : '';
+}
+
+async function scanLoop(id) {
+  const video = $('#video');
+  let native = await pickNativeDetector();
+  let nativeErrors = 0;
+  while (scanning && id === loopId) {
+    if (video.readyState >= 2 && video.videoWidth) {
+      try {
+        const text = await readFrame(video, native);
+        nativeErrors = 0;
+        if (text) handleCode(text);
+      } catch (e) {
+        if (native) { if (++nativeErrors > 3) native = false; }   // native detector misbehaving: switch to ZXing
+        else if (!engineErrorShown) {
+          engineErrorShown = true;
+          setBanner('err', 'Scanner could not start', String((e && e.message) || e));
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, native ? 60 : 30));      // let the page breathe between frames
+  }
+}
+
 async function startCamera() {
   if (scanning) return;
   $('#cam_fallback').classList.add('hidden');
   try {
-    if (!scanner) {
-      scanner = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
-    }
-    await scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * 0.7); return { width: s, height: s }; } },
-      text => handleCode(text),
-      () => {}
-    );
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        // Ask for the highest resolution: more camera pixels per QR square is the single biggest help for dense codes.
+        width: { ideal: 3840 }, height: { ideal: 2160 }
+      }
+    });
+    const video = $('#video');
+    video.srcObject = stream;
+    await video.play();
+    try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
     scanning = true;
+    scanLoop(++loopId);
   } catch (e) {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     $('#cam_msg').textContent = 'Camera unavailable. Allow camera access for this site, then try again.';
     $('#cam_fallback').classList.remove('hidden');
   }
 }
+
 async function stopCamera() {
-  if (scanner && scanning) { try { await scanner.stop(); } catch (e) {} }
-  scanning = false;
+  scanning = false; loopId++;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const v = $('#video'); if (v) v.srcObject = null;
 }
 
 /* ---------- feedback ---------- */
@@ -374,7 +442,7 @@ async function handleCode(raw, force = false) {
   const sku = extractSku(raw);
   if (!sku || inflight.has(sku) || !mode) return;
   const now = Date.now();
-  if (!force && sku === lastCode && now - lastTime < 3000) return; // ignore repeat reads of the same code
+  if (!force && sku === lastCode && now - lastTime < 6000) return; // ignore repeat reads of the same code
   lastCode = sku; lastTime = now; inflight.add(sku);
 
   setBanner('', 'Checking ' + sku + '…');
@@ -425,6 +493,7 @@ document.addEventListener('visibilitychange', () => {
   else if (mode && idToken && !$('#scan').classList.contains('hidden')) startCamera();
 });
 
+try { ZXingWASM.prepareZXingModule({ fireImmediately: true }); } catch (e) {}   // start loading the decoder early
 initGoogle();
 </script>
 </body>
